@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>My experiment</title>
+    <script src="https://unpkg.com/jspsych@8.0.3"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-html-button-response@2.0.0"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-image-button-response@2.0.0"></script>
+    <script src="https://unpkg.com/@jspsych/plugin-preload@2.0.0"></script>
+    <link href="https://unpkg.com/jspsych@8.0.3/css/jspsych.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body></body>
+  <script>
+    var jsPsych = initJsPsych({
+      on_finish: function() { // Local save as placeholder for backend server storage
+        jsPsych.data.get().localSave('json', 'experiment_data.json'); 
+      }
+    });
+
+    var timeline = [];
+
+    var preload = {
+      type: jsPsychPreload,
+      images: ['img/emo1.png', 'img/emo2.png', 'img/emo3.png', 'img/emo4.png', 'img/emo5.png']
+    };
+    timeline.push(preload);
+
+    var welcome = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: "Welcome! Click below to begin.",
+      choices: ['Start study']
+    };
+    timeline.push(welcome);
+
+    var instructions = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: `
+        <h2>Instructions</h2>
+        <p>In this task, you will see several images one by one.</p>
+        <p>Your goal is to decide whether the image conveys a <i>positive</i> or <i>negative</i> emotion.</p>
+        <p>Click the appropriate button to indicate your response.</p>
+        <p>When you're ready, click below to start.</p>
+      `,
+      choices: ['Start the task']
+    };
+    timeline.push(instructions);
+
+    var images = ['img/emo1.png', 'img/emo2.png', 'img/emo3.png', 'img/emo4.png', 'img/emo5.png'];
+
+    var randomizedImages = jsPsych.randomization.shuffle(images); // Decided to randomize the order the images are presented to users
+
+    randomizedImages.forEach((image) => {
+      timeline.push({
+        type: jsPsychImageButtonResponse,
+        stimulus: image,
+        stimulus_height: 200,
+        choices: ['Positive', 'Negative'],
+        prompt: "<p>Is this positive or negative?</p>",
+        data: { stimulus: image }
+      });
+    });
+
+    var goodbye = {
+      type: jsPsychHtmlButtonResponse,
+      stimulus: "Thank you for participating!",
+      choices: ['Finish']
+    };
+    timeline.push(goodbye);
+
+    jsPsych.run(timeline);
+  </script>
+</html>

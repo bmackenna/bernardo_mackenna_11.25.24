@@ -1,0 +1,58 @@
+---
+title: "R coding task"
+author: "Bernardo Mackenna"
+date: "`r Sys.Date()`"
+output: html_notebook
+---
+
+```{r Prelude, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Libraries
+library(here) # Easier loading of WD
+library(tidyverse) # Data Wrangling
+library(broom) # Tidying Models
+library(psych) # Psychometrics
+library(marginaleffects) # Regression post estimation analytics
+library(ggstats) # Easier GG Plots
+library(gt) # Nicer tables
+library(gtsummary) # Nicer tables
+library(ggrepel) # Nicer text labels
+library(patchwork) # Combine Plots
+library(lm.beta) # Standardize Coefficients to OLS models
+library(viridis) # Color-blind friendly continous scales
+
+# Themes 
+
+```
+
+``` {r Setup, include=FALSE}
+
+# Load Data
+
+# Globals 
+
+# Functions
+
+
+```
+
+``` {r Data Wrangling, include=FALSE}
+
+# Columns
+
+# Subsets
+
+```
+
+``` {r Initial Exploration}
+
+```
+
+``` {r Multilevel Models}
+
+```
+
+``` {r Plots}
+
+```
