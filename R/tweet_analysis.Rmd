@@ -5,54 +5,308 @@ date: "`r Sys.Date()`"
 output: html_notebook
 ---
 
-```{r Prelude, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+First, I load the needed libraries, data, and do some minimal wrangling to ease coding below.
+
+```{r Prelude}
 
 # Libraries
 library(here) # Easier loading of WD
 library(tidyverse) # Data Wrangling
-library(broom) # Tidying Models
-library(psych) # Psychometrics
-library(marginaleffects) # Regression post estimation analytics
-library(ggstats) # Easier GG Plots
-library(gt) # Nicer tables
-library(gtsummary) # Nicer tables
-library(ggrepel) # Nicer text labels
-library(patchwork) # Combine Plots
-library(lm.beta) # Standardize Coefficients to OLS models
-library(viridis) # Color-blind friendly continous scales
-
-# Themes 
-
-```
-
-``` {r Setup, include=FALSE}
+library(lme4) # Multilevel models
+library(performance) # Multilevel diagnostics
+library(marginaleffects) # Regression post estimation
+library(viridis) # Color-blind friendly continuous scales
 
 # Load Data
 
-# Globals 
+d <- read.csv(here("R/data", "strategic_signaling_data_long.csv"))
 
-# Functions
+# Wrangling
+d <- d %>% 
+  mutate(POL = as.factor(poli_affil),
+         MOD = as.factor(is_moderate),
+         CRS = as.factor(co_cross))
+
+```
+
+Then after checking the variables distributions, *NA*s, etc... (omitted from notebook), I started by plotting the simple bivariate distribution of the variables. Under this naive assumptions, both variables are statistically distinct by Political Affiliation (*t* = 15.7 and 3.5 for perceived and sentiment respectively), with right wing raters providing higher scores in both measures.
+
+```{r Bivariate Plots}
+
+# Descriptive Plots
+
+ggplot(data = d, aes(x = poli_affil, y = avg_perceived, fill = poli_affil)) +
+  stat_summary(fun = mean, geom = "bar") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2) +
+  theme_classic() +
+  labs(x = "Political Affiliation", 
+       y = "Average Perception",
+       title = "Average Perception by Political Affiliation with 95% CIs")
+
+ggplot(data = d, aes(x = poli_affil, y = avg_sentiment, fill = poli_affil)) +
+  stat_summary(fun = mean, geom = "bar") +
+  stat_summary(fun.data = mean_cl_normal, geom = "errorbar", width = 0.2) +
+  theme_classic() +
+  labs(x = "Political Affiliation", 
+       y = "Average Sentiment",
+       title = "Average Sentiment by Political Affiliation with 95% CIs")
+
+```
+
+Before moving into multilevel modelling, I decided to test covariate adjustments based on the available indicators, using linear models. For each outcome I tested 12 specifications, which varied in the inclusion of rater-level covariates and their respective interactions. I then estimated the BIC scores for these models to identify the model fit, considering the parsimony of the predictions. In both cases, the inclusion of the "`co_cross`" variable was the most important feature, as once considered, models differed only slightly in BIC scores by their specification. For both outcomes, the specification with the best fit was the one that included interactive terms between `co_cross` and political affiliation, and `co_cross` and moderate status.
+
+```{r Linear Modelling}
+
+lm_p <- list(
+  lm_p0  = lm(avg_perceived ~ POL, data = d),
+  lm_p1  = lm(avg_perceived ~ POL + MOD, data = d),
+  lm_p2  = lm(avg_perceived ~ POL + CRS, data = d),
+  lm_p3  = lm(avg_perceived ~ POL + MOD + CRS, data = d),
+  lm_p4  = lm(avg_perceived ~ POL * MOD + CRS, data = d),
+  lm_p5  = lm(avg_perceived ~ POL * CRS + MOD, data = d),
+  lm_p6  = lm(avg_perceived ~ MOD * CRS + POL, data = d),
+  lm_p7  = lm(avg_perceived ~ POL * MOD + POL * CRS, data = d),
+  lm_p8  = lm(avg_perceived ~ POL * MOD + MOD * CRS, data = d),
+  lm_p9  = lm(avg_perceived ~ POL * CRS + MOD * CRS, data = d),
+  lm_p10 = lm(avg_perceived ~ POL * MOD + POL * CRS + MOD * CRS, data = d),
+  lm_p11 = lm(avg_perceived ~ POL * MOD * CRS, data = d)
+)
+
+lm_s <- list(
+  lm_s0  = lm(avg_sentiment ~ POL, data = d),
+  lm_s1  = lm(avg_sentiment ~ POL + MOD, data = d),
+  lm_s2  = lm(avg_sentiment ~ POL + CRS, data = d),
+  lm_s3  = lm(avg_sentiment ~ POL + MOD + CRS, data = d),
+  lm_s4  = lm(avg_sentiment ~ POL * MOD + CRS, data = d),
+  lm_s5  = lm(avg_sentiment ~ POL * CRS + MOD, data = d),
+  lm_s6  = lm(avg_sentiment ~ MOD * CRS + POL, data = d),
+  lm_s7  = lm(avg_sentiment ~ POL * MOD + POL * CRS, data = d),
+  lm_s8  = lm(avg_sentiment ~ POL * MOD + MOD * CRS, data = d),
+  lm_s9  = lm(avg_sentiment ~ POL * CRS + MOD * CRS, data = d),
+  lm_s10 = lm(avg_sentiment ~ POL * MOD + POL * CRS + MOD * CRS, data = d),
+  lm_s11 = lm(avg_sentiment ~ POL * MOD * CRS, data = d)
+)
+
+bic_lp <- data.frame(
+  Model = c("P", "P+M", "P+C", "P+M+C", 
+            "P*M+C", "P*C+M", "P+M*C", "P*M+P*C", 
+            "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C", 
+            "P*M*C"),
+  BIC = sapply(lm_p, BIC)
+)
+bic_lp <- bic_lp[order(bic_lp$BIC), ]
+
+bic_ls <- data.frame(
+  Model = c("P", "P+M", "P+C", "P+M+C", 
+            "P*M+C", "P*C+M", "P+M*C", "P*M+P*C", 
+            "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C", 
+            "P*M*C"),
+  BIC = sapply(lm_s, BIC)
+)
+bic_ls <- bic_ls[order(bic_ls$BIC), ]
+
+ggplot(data = bic_lp %>% 
+         mutate(Model = factor(Model, levels = Model[order(BIC)])),
+       aes(x = Model, y = BIC, fill = BIC)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model Specification",
+       y = "BIC",
+       title = "Perceived Linear Fit") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma", 
+                       name = "BIC",
+                       direction = 1, 
+                       oob = scales::squish) +
+  theme_classic() +
+  theme(legend.position = "right")
+
+ggplot(data = bic_ls %>% 
+         mutate(Model = factor(Model, levels = Model[order(BIC)])),
+       aes(x = Model, y = BIC, fill = BIC)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model Specification",
+       y = "BIC",
+       title = "Sentiment Linear Fit") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma", 
+                       name = "BIC",
+                       direction = 1, 
+                       oob = scales::squish) +
+  theme_classic() +
+  theme(legend.position = "right")
+
+```
+
+Then I estimated the same of models, but using `lme4` for multilevel models to account for the data's nested structure.
+
+```{r Multilevel Models}
+
+ml_p <- list(
+  ml_p0  = lmer(avg_perceived ~ POL + (1 | tweet), data = d),
+  ml_p1  = lmer(avg_perceived ~ POL + MOD + (1 | tweet), data = d),
+  ml_p2  = lmer(avg_perceived ~ POL + CRS + (1 | tweet), data = d),
+  ml_p3  = lmer(avg_perceived ~ POL + MOD + CRS + (1 | tweet), data = d),
+  ml_p4  = lmer(avg_perceived ~ POL * MOD + CRS + (1 | tweet), data = d),
+  ml_p5  = lmer(avg_perceived ~ POL * CRS + MOD + (1 | tweet), data = d),
+  ml_p6  = lmer(avg_perceived ~ MOD * CRS + POL + (1 | tweet), data = d),
+  ml_p7  = lmer(avg_perceived ~ POL * MOD + POL * CRS + (1 | tweet), data = d),
+  ml_p8  = lmer(avg_perceived ~ POL * MOD + MOD * CRS + (1 | tweet), data = d),
+  ml_p9  = lmer(avg_perceived ~ POL * CRS + MOD * CRS + (1 | tweet), data = d),
+  ml_p10 = lmer(avg_perceived ~ POL * MOD + POL * CRS + MOD * CRS + (1 | tweet), data = d),
+  ml_p11 = lmer(avg_perceived ~ POL * MOD * CRS + (1 | tweet), data = d)
+)
+
+
+ml_s <- list(
+  ml_s0  = lmer(avg_sentiment ~ POL + (1 | tweet), data = d),
+  ml_s1  = lmer(avg_sentiment ~ POL + MOD + (1 | tweet), data = d),
+  ml_s2  = lmer(avg_sentiment ~ POL + CRS + (1 | tweet), data = d),
+  ml_s3  = lmer(avg_sentiment ~ POL + MOD + CRS + (1 | tweet), data = d),
+  ml_s4  = lmer(avg_sentiment ~ POL * MOD + CRS + (1 | tweet), data = d),
+  ml_s5  = lmer(avg_sentiment ~ POL * CRS + MOD + (1 | tweet), data = d),
+  ml_s6  = lmer(avg_sentiment ~ MOD * CRS + POL + (1 | tweet), data = d),
+  ml_s7  = lmer(avg_sentiment ~ POL * MOD + POL * CRS + (1 | tweet), data = d),
+  ml_s8  = lmer(avg_sentiment ~ POL * MOD + MOD * CRS + (1 | tweet), data = d),
+  ml_s9  = lmer(avg_sentiment ~ POL * CRS + MOD * CRS + (1 | tweet), data = d),
+  ml_s10 = lmer(avg_sentiment ~ POL * MOD + POL * CRS + MOD * CRS + (1 | tweet), data = d),
+  ml_s11 = lmer(avg_sentiment ~ POL * MOD * CRS + (1 | tweet), data = d)
+)
+```
+
+Here it should be noted that for average perceived scores, the multilevel estimates are singular if `co_cross` is not included in the model specification. To review this further, I estimated the intraclass correlation for all models. For perceived there is some variation between model specifications, but overall the *ICC* are relatively small (\~3.5%) suggesting little influence of clustering in the estimates. However, for sentiment the *ICC* are significantly higher suggesting a non-trivial of variance (\~34%) accounted by the nested structure of the data.
+
+```{r Intraclass Correlations}
+icc_mp <- map_dfr(ml_p, icc, .id = "Model")  
+ml_p_subset <- ml_p[-(1:2)] # models 0 and 1 are singular
+icc_mp <- map_dfr(ml_p_subset, icc, .id = "Model") %>% 
+  mutate(Model = c("P+C", "P+M+C",
+                   "P*M+C", "P*C+M", "P+M*C", "P*M+P*C",
+                   "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C",
+                   "P*M*C"))
+
+icc_ms <- map_dfr(ml_s, icc, .id = "Model") %>% 
+  mutate(Model = c("P", "P+M", "P+C", "P+M+C",
+                   "P*M+C", "P*C+M", "P+M*C", "P*M+P*C",
+                   "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C",
+                   "P*M*C"))
+
+ggplot(icc_mp, aes(x = Model, y = ICC_adjusted, fill = ICC_adjusted)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model",
+       y = "Intraclass Correlation",
+       title = "Perceived") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma",
+                       name = "ICC",
+                       direction = -1) +
+  theme_classic() +
+  theme(legend.position = "right")
+
+ggplot(icc_ms, aes(x = Model, y = ICC_adjusted, fill = ICC_adjusted)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model",
+       y = "Intraclass Correlation",
+       title = "Sentiment") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma",
+                       name = "ICC",
+                       direction = -1) +
+  theme_classic() +
+  theme(legend.position = "right")
+
+```
+
+Just like for the linear models, I estimated the fit of the multilevel models by their BIC scores. The same conclusion stands: the critical variable to include is `co_cross`, and the best specification for both outcomes is when interactive terms between `co_cross` and political affiliation, and `co_cross` and moderate status are estimated.
+
+```{r Multilevel Model Fit}
+bic_mp <- data.frame(
+  Model = c("P", "P+M", "P+C", "P+M+C", 
+            "P*M+C", "P*C+M", "P+M*C", "P*M+P*C", 
+            "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C", 
+            "P*M*C"),
+  BIC = sapply(ml_p, BIC)
+)
+bic_mp <- bic_mp[order(bic_mp$BIC), ]
+
+bic_ms <- data.frame(
+  Model = c("P", "P+M", "P+C", "P+M+C", 
+            "P*M+C", "P*C+M", "P+M*C", "P*M+P*C", 
+            "P*M+M*C", "P*C+M*C", "P*M+P*C+M*C", 
+            "P*M*C"),
+  BIC = sapply(lm_s, BIC)
+)
+bic_ms <- bic_ms[order(bic_ms$BIC), ]
+
+ggplot(data = bic_mp %>% 
+         mutate(Model = factor(Model, levels = Model[order(BIC)])),
+       aes(x = Model, y = BIC, fill = BIC)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model Specification",
+       y = "BIC",
+       title = "Perceived Multilevel Fit") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma", 
+                       name = "BIC",
+                       direction = 1, 
+                       oob = scales::squish) +
+  theme_classic() +
+  theme(legend.position = "right")
+
+ggplot(data = bic_ms %>% 
+         mutate(Model = factor(Model, levels = Model[order(BIC)])),
+       aes(x = Model, y = BIC, fill = BIC)) +
+  geom_bar(stat = "identity") +
+  labs(x = "Model Specification",
+       y = "BIC",
+       title = "Sentiment Multilevel Fit") +
+  coord_flip() +
+  scale_fill_viridis_c(option = "plasma", 
+                       name = "BIC",
+                       direction = 1, 
+                       oob = scales::squish) +
+  theme_classic() +
+  theme(legend.position = "right")
 
 
 ```
 
-``` {r Data Wrangling, include=FALSE}
+For the requested plot: using the best multilevel models by fit, I computed the predicted values for each outcome by political affiliation and plotted them in the figure below. For this, I relied on the `marginaleffects` suite.
 
-# Columns
+```{r Requested Plot}
+p_p9 <- predictions(ml_p$ml_p9, newdata = datagrid(POL = unique), re.form=NA)
+p_s9 <- predictions(ml_s$ml_s9, newdata = datagrid(POL = unique), re.form=NA)
+pred <- bind_rows(p_p9, p_s9) %>% 
+  mutate(Outcome = c("Perceived", "Perceived", "Sentiment", "Sentiment"))
 
-# Subsets
+ggplot(pred, aes(x = POL, y = estimate, fill = Outcome)) +
+  geom_col(position = position_dodge(width = 0.9), width = 0.5) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), position = position_dodge(width = 0.9), width = 0.2) +
+  theme_classic() +
+  labs(y = "Score",
+       x = "Political Affiliation") +
+  scale_y_continuous(expand = c(0, 0)) +
+  scale_x_discrete(labels = c("Left", "Right"))
 
 ```
 
-``` {r Initial Exploration}
+Lastly to better assess the question of the "effect" of political affiliation based on the model specification, I computed the partial derivatives of the difference between right-wing and left-wing raters by `co_cross` values (also relying on the `marginaleffects` suite), which I also plotted below. These results offer interesting findings: while right-wing raters have higher perceived scores than left-wing ones for both values, the differences by political affiliation are significantly higher for the `cross` group. However, while for the `co` group right-wing raters have *lower* sentiment scores than left-wing ones, for the `cross` right-wing raters have *higher* sentiment scores. While since I don't have additional information on the study to produce a meaningful interpretation, in my experience these types of results (i.e. *structural breaks*) tend to offer very insightful conclusions.
 
-```
+```{r Affiliation Effect on Outcomes}
+s_p9 <- slopes(ml_p$ml_p9, slope = "dydx", variables = "POL", by = "CRS", re.form=NA)
+s_s9 <- slopes(ml_s$ml_s9, slope = "dydx", variables = "POL", by = "CRS", re.form=NA)
+slop <- bind_rows(s_p9, s_s9) %>% 
+  mutate(Outcome = c("Perceived", "Perceived", "Sentiment", "Sentiment"))
 
-``` {r Multilevel Models}
+ggplot(slop, aes(x = CRS, y = estimate, color = Outcome)) +
+  geom_point(position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), position = position_dodge(width = 0.9), width = 0.2) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  theme_classic() +
+  labs(y = "Partial Effect on Outcome",
+       x = "co_cross") +
+  scale_y_continuous(expand = c(0, 0), limits = c(-.4,.3)) +
+  scale_x_discrete(labels = c("co", "cross"))
+  
 
-```
-
-``` {r Plots}
 
 ```
